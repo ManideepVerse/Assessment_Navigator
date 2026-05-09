@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: shl-assessment-recommender
+    env: python
+    buildCommand: "pip install -r requirements.txt && python build_index.py"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: GEMINI_API_KEY
+        sync: false
