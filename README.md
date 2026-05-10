@@ -95,9 +95,3 @@ This project includes a `render.yaml` file for instant 1-click deployment.
 4. Render will automatically detect the Python environment and the start command (`uvicorn main:app --host 0.0.0.0 --port $PORT`).
 5. **Important:** Navigate to your service settings in Render and add `GEMINI_API_KEY` to the Environment Variables.
 
-## Testing & Evaluation
-
-You can run the provided `demo_chat.py` script to simulate a live multi-turn conversation in your local terminal:
-```bash
-python demo_chat.py
-```

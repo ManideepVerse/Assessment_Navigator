@@ -11,13 +11,15 @@
 - **Data Preprocessing**: The catalog items were merged into a rich-text format (`Name: [name]\nCategories: [keys]\nJob Levels: [levels]\nDescription: [desc]`) to maximize semantic overlap with user queries.
 
 ## 3. Prompt Design
-The System Prompt is rigorously structured into 6 explicit rules:
+The System Prompt is rigorously structured into 8 explicit rules:
 1. Clarify vague queries before searching.
-2. Recommend 1 to 10 assessments ONLY from the `search_catalog` tool results.
-3. Refine shortlists mid-conversation gracefully.
-4. Compare assessments using grounded catalog data.
-5. Strictly stay in scope (refuse prompt injections and off-topic requests).
-6. Set `end_of_conversation` only when the task is fully resolved.
+2. Use tools to ground every recommendation.
+3. Recommend 1 to 10 assessments ONLY from tool results.
+4. Refine shortlists mid-conversation gracefully.
+5. Compare assessments using grounded catalog data.
+6. Strictly stay in scope (refuse prompt injections and off-topic requests).
+7. strictly follow the JSON response schema.
+8. Be efficient to honor the 8-turn conversation cap.
 
 The prompt strictly enforces a rigid JSON schema. Because Gemini natively supports `response_mime_type="application/json"`, we guarantee schema compliance without fragile regex parsing.
 

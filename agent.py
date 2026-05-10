@@ -217,36 +217,39 @@ def process_chat_history(messages: list[dict]) -> dict:
     max_tool_rounds = 5
     rounds = 0
     while rounds < max_tool_rounds:
-        # Check if there's a function call in the response
-        fc = None
+        # Collect ALL function calls in this turn
+        function_calls = []
         for part in response.parts:
             if hasattr(part, "function_call") and part.function_call and part.function_call.name:
-                fc = part.function_call
-                break
+                function_calls.append(part.function_call)
 
-        if fc is None:
+        if not function_calls:
             break  # No more tool calls — we have a text answer
 
-        # Execute the tool
-        func_name = fc.name
-        func_args = dict(fc.args) if fc.args else {}
+        # Execute all calls and build response parts
+        response_parts = []
+        for fc in function_calls:
+            func_name = fc.name
+            func_args = dict(fc.args) if fc.args else {}
 
-        if func_name == "search_catalog":
-            tool_result = search_catalog(**func_args)
-        elif func_name == "lookup_assessment":
-            tool_result = lookup_assessment(**func_args)
-        else:
-            tool_result = json.dumps({"error": f"Unknown function: {func_name}"})
+            if func_name == "search_catalog":
+                tool_result = search_catalog(**func_args)
+            elif func_name == "lookup_assessment":
+                tool_result = lookup_assessment(**func_args)
+            else:
+                tool_result = json.dumps({"error": f"Unknown function: {func_name}"})
 
-        # Send tool result back to the model
-        response = chat.send_message(
-            genai.protos.Part(
-                function_response=genai.protos.FunctionResponse(
-                    name=func_name,
-                    response={"result": tool_result},
+            response_parts.append(
+                genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(
+                        name=func_name,
+                        response={"result": tool_result},
+                    )
                 )
             )
-        )
+
+        # Send all tool results back to the model in a single turn
+        response = chat.send_message(response_parts)
         rounds += 1
 
     # Parse the final text response as JSON
@@ -263,7 +266,9 @@ def process_chat_history(messages: list[dict]) -> dict:
             "end_of_conversation": False,
         }
 
-    # Enforce schema
+    # Enforce schema and validate URLs against the catalog
+    valid_urls = {item["link"] for item in _raw_catalog}
+    
     result = {
         "reply": data.get("reply", ""),
         "recommendations": [],
@@ -272,10 +277,13 @@ def process_chat_history(messages: list[dict]) -> dict:
 
     for rec in data.get("recommendations", []) or []:
         if isinstance(rec, dict) and "name" in rec and "url" in rec:
-            result["recommendations"].append({
-                "name": rec["name"],
-                "url": rec["url"],
-                "test_type": rec.get("test_type", "K"),
-            })
+            url = rec["url"]
+            # Only include if the URL is valid
+            if url in valid_urls:
+                result["recommendations"].append({
+                    "name": rec["name"],
+                    "url": url,
+                    "test_type": rec.get("test_type", "K"),
+                })
 
     return result
