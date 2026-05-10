@@ -7,19 +7,26 @@ from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 
 # ---------------------------------------------------------------------------
-# 1. Load RAG components globally (runs once at import / startup)
+# 1. Load RAG components lazily to save RAM (Render Free Tier limit is 512MB)
 # ---------------------------------------------------------------------------
-print("Loading FAISS index and metadata...")
-try:
-    _index = faiss.read_index("catalog.faiss")
-    with open("catalog_metadata.pkl", "rb") as _f:
-        _metadata = pickle.load(_f)
-    print("Loading SentenceTransformer model...")
-    _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-    print(f"Loaded {_index.ntotal} vectors, {len(_metadata)} metadata entries.")
-except Exception as _e:
-    print("WARNING: Could not load index/model. Run build_index.py first.", _e)
-    _index, _metadata, _embed_model = None, None, None
+import torch
+torch.set_num_threads(1)
+
+_index = None
+_metadata = None
+_embed_model = None
+
+def _get_rag_resources():
+    global _index, _metadata, _embed_model
+    if _index is None:
+        print("Loading FAISS index and metadata...")
+        _index = faiss.read_index("catalog.faiss")
+        with open("catalog_metadata.pkl", "rb") as _f:
+            _metadata = pickle.load(_f)
+    if _embed_model is None:
+        print("Loading SentenceTransformer model...")
+        _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _index, _metadata, _embed_model
 
 # Also load the raw catalog for full-text look-ups (comparisons, exact name matches)
 try:
@@ -83,19 +90,20 @@ def search_catalog(query: str, top_k: int = 15) -> str:
         query: A natural-language search string describing the kind of assessment needed.
         top_k: How many results to return (default 15, max 20).
     """
-    if _index is None or _embed_model is None:
+    index, metadata, model = _get_rag_resources()
+    if index is None or model is None:
         return json.dumps({"error": "Search index not loaded."})
 
     top_k = min(max(top_k, 1), 20)
-    emb = _embed_model.encode([query]).astype("float32")
-    distances, indices = _index.search(emb, top_k)
+    emb = model.encode([query]).astype("float32")
+    distances, indices = index.search(emb, top_k)
 
     results = []
     seen = set()
     for i in indices[0]:
-        if i == -1 or i >= len(_metadata):
+        if i == -1 or i >= len(metadata):
             continue
-        m = _metadata[i]
+        m = metadata[i]
         name = m["name"]
         if name in seen:
             continue
@@ -112,6 +120,7 @@ def lookup_assessment(name: str) -> str:
     Args:
         name: The exact or partial name of the SHL assessment.
     """
+    _get_rag_resources() # Ensure metadata is loaded if it wasn't
     name_lower = name.lower()
     # Try exact match first
     if name_lower in _catalog_by_name:
